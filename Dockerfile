@@ -1,24 +1,28 @@
-# Use Java 17 image
-FROM eclipse-temurin:17-jdk-alpine
+# ---- Stage 1: Build ----
+FROM maven:3.9-eclipse-temurin-17 AS builder
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy maven wrapper and pom file
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
+# Copy pom.xml first for better layer caching
+COPY pom.xml .
 
-# Convert line endings of mvnw (in case building on Windows)
-RUN sed -i 's/\r$//' mvnw
+# Download dependencies (cached unless pom.xml changes)
+RUN mvn dependency:go-offline -B
 
-# Resolve dependencies (better caching)
-RUN ./mvnw dependency:go-offline
-
-# Copy the source code
+# Copy source code and build the JAR
 COPY src ./src
+RUN mvn clean package -DskipTests -B
 
-# Build the application skipping tests
-RUN ./mvnw clean package -DskipTests
+# ---- Stage 2: Runtime ----
+FROM eclipse-temurin:17-jre
 
-# Run the notification service
-CMD ["java", "-jar", "target/notification-service-0.0.1-SNAPSHOT.jar"]
+WORKDIR /app
+
+# Copy the built JAR from the builder stage
+COPY --from=builder /app/target/notification-service-0.0.1-SNAPSHOT.jar app.jar
+
+# Expose the application port
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
