@@ -31,8 +31,8 @@ public class SecurityConfig {
                 // Allow Swagger UI
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // ⚠️  TESTING ONLY — remove these two lines before deploying to production
-                .requestMatchers("/notification/send").permitAll()
-                .requestMatchers("/notifications").permitAll()
+                //.requestMatchers("/notification/send").permitAll()
+                //.requestMatchers("/notifications").permitAll()
                 // Any other request must be authenticated
                 .anyRequest().authenticated()
             )
