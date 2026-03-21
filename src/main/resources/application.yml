@@ -1,0 +1,39 @@
+server:
+  port: ${PORT:8004}
+
+spring:
+  application:
+    name: notification-service
+  config:
+    import: optional:file:.env[.properties]
+  data:
+    mongodb:
+      # Placeholder for Cosmos DB MongoDB API connection string
+      uri: ${MONGODB_URI:mongodb://localhost:27017/notification-db}
+  
+  # Optional Email configuration
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:your-email@gmail.com}
+    password: ${MAIL_PASSWORD:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+jwt:
+  # 256-bit secure secret code (this must match the gateway's secret key)
+  secret: ${JWT_SECRET:super-secret-key-that-must-be-min-256-bits-for-hs256!}
+
+notification:
+  email:
+    # Set this to false to only use console logging
+    enabled: ${EMAIL_ENABLED:false}
+
+logging:
+  level:
+    com.methush.notification: DEBUG
+    org.springframework.data.mongodb.core.MongoTemplate: INFO
