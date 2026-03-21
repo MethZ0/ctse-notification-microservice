@@ -1,4 +1,4 @@
-name: Deploy Notification Service to Azure
+name: Build and Push to Azure Container Registry
 
 on:
   push:
@@ -9,8 +9,8 @@ env:
   IMAGE_NAME: ctse-notification-service
 
 jobs:
-  build-and-deploy:
-    name: Build, Push & Deploy
+  build-and-push:
+    name: Build & Push Docker Image to ACR
     runs-on: ubuntu-latest
 
     steps:
@@ -27,6 +27,7 @@ jobs:
           password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
 
       # ─── 3. Build and push Docker image to ACR ──────────────────────────────
+      #        Pushes two tags: 'latest' (for ACR webhook trigger) and git SHA
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -36,30 +37,9 @@ jobs:
             ${{ secrets.AZURE_REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
             ${{ secrets.AZURE_REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      # ─── 4. Log in to Azure (requires AZURE_CREDENTIALS service principal) ──
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # ─── 5. Deploy new image to Azure Container Apps ────────────────────────
-      - name: Deploy to Azure Container Apps
+      - name: Deployment summary
         run: |
-          az containerapp update \
-            --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image ${{ secrets.AZURE_REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --set-env-vars \
-              PORT=8004 \
-              MONGODB_URI=secretref:mongodb-uri \
-              MONGODB_DATABASE=notification-db \
-              JWT_SECRET=secretref:jwt-secret \
-              MAIL_USERNAME=secretref:mail-username \
-              MAIL_PASSWORD=secretref:mail-password \
-              EMAIL_ENABLED=true
+          echo "✅ Image pushed to ACR successfully!"
+          echo "Image: ${{ secrets.AZURE_REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest"
+          echo "Azure Container Apps will auto-deploy via ACR webhook."
 
-      # ─── 6. Verify deployment ────────────────────────────────────────────────
-      - name: Verify deployment
-        run: |
-          echo "✅ Deployment complete!"
-          echo "Image: ${{ secrets.AZURE_REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
