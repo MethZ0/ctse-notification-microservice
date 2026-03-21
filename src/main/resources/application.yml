@@ -8,8 +8,10 @@ spring:
     import: optional:file:.env[.properties]
   data:
     mongodb:
-      # Placeholder for Cosmos DB MongoDB API connection string
+      # Connection string — can be local URI or MongoDB Atlas / Azure Cosmos DB SRV URI
       uri: ${MONGODB_URI:mongodb://localhost:27017/notification-db}
+      # Database name explicitly set — required when the URI doesn't include it (e.g. Atlas SRV URIs)
+      database: ${MONGODB_DATABASE:notification-db}
   
   # Optional Email configuration
   mail:

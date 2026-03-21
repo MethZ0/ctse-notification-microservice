@@ -18,11 +18,21 @@ public class Notification {
 
     @Id
     private String id;
-    
+
+    /** Notification type: "order_confirmation" or "order_status_update" */
+    private String type;
+
+    /** Recipient email address */
+    private String email;
+
+    /** Order ID (e.g. "ORD#0001") */
     private String orderId;
-    private String userId;
-    private String message;
+
+    /** New order status — only set for "order_status_update" notifications */
+    private String orderStatus;
+
     private LocalDateTime timestamp;
     private boolean isEmailSent;
 
 }
+

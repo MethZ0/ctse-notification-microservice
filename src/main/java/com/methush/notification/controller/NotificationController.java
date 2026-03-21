@@ -1,8 +1,11 @@
 package com.methush.notification.controller;
 
 import com.methush.notification.dto.NotificationRequest;
+import com.methush.notification.dto.NotificationResponse;
 import com.methush.notification.model.Notification;
 import com.methush.notification.service.NotificationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -11,22 +14,37 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/notifications")
 @RequiredArgsConstructor
+@Tag(name = "Notifications", description = "Endpoints for sending and managing notifications")
 public class NotificationController {
 
     private final NotificationService notificationService;
 
-    @PostMapping("/notify")
-    public ResponseEntity<Notification> createNotification(@Valid @RequestBody NotificationRequest request) {
-        Notification notification = notificationService.sendNotification(request);
-        return new ResponseEntity<>(notification, HttpStatus.CREATED);
+    /**
+     * Primary endpoint — called by the order-service via the API Gateway.
+     * Handles both "order_confirmation" and "order_status_update" notification types.
+     *
+     * Route: POST /notification/send
+     * Body:  { type, email, orderId, orderStatus? }
+     */
+    @PostMapping("/notification/send")
+    @Operation(summary = "Send a notification", description = "Accepts a notification request from the API Gateway and sends an HTML email to the user.")
+    public ResponseEntity<NotificationResponse> sendNotification(@Valid @RequestBody NotificationRequest request) {
+        NotificationResponse response = notificationService.processNotification(request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @GetMapping
+    /**
+     * Returns paginated notification history stored in MongoDB.
+     *
+     * Route: GET /notifications?page=0&size=10
+     */
+    @GetMapping("/notifications")
+    @Operation(summary = "Get notification history", description = "Returns a paginated list of all notifications, newest first.")
     public ResponseEntity<Page<Notification>> getNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(notificationService.getRecentNotifications(page, size));
     }
 }
+
