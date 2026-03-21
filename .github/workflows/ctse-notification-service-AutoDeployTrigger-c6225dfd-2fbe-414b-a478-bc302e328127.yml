@@ -42,6 +42,17 @@ jobs:
           containerAppName: ctse-notification-service
           resourceGroup: ctse-rg
           imageToBuild: ctseregistry.azurecr.io/ctse-notification-service:${{ github.sha }}
+          ingress: external
+          targetPort: 8004
+
+      # Fix target port explicitly after deploy (safety net)
+      - name: Fix ingress target port to 8004
+        run: |
+          az containerapp ingress update \
+            --name ctse-notification-service \
+            --resource-group ctse-rg \
+            --target-port 8004
+
 
 
 
