@@ -35,6 +35,10 @@ notification:
     # Set this to false to only use console logging
     enabled: ${EMAIL_ENABLED:false}
 
+# API Gateway URL — used to fetch admin emails for LOW_STOCK alerts
+gateway:
+  url: ${GATEWAY_URL:http://localhost:8000}
+
 logging:
   level:
     com.methush.notification: DEBUG

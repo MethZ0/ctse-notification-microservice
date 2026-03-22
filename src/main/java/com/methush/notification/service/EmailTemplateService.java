@@ -147,4 +147,49 @@ public class EmailTemplateService {
             default           -> "📦";
         };
     }
+
+    /**
+     * HTML email for a low stock alert sent to admin users.
+     *
+     * @param alertMessage human-readable message from the inventory service
+     * @param productId    the product's MongoDB ID
+     * @return HTML string
+     */
+    public String buildLowStockAlertHtml(String alertMessage, String productId) {
+        return "<!DOCTYPE html>" +
+               "<html lang=\"en\">" +
+               "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
+               "<style>" +
+               "  body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }" +
+               "  .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }" +
+               "  .header { background-color: #e67e22; padding: 30px 40px; text-align: center; }" +
+               "  .header h1 { color: #ffffff; margin: 0; font-size: 26px; letter-spacing: 1px; }" +
+               "  .body { padding: 40px; color: #333333; }" +
+               "  .body h2 { color: #e67e22; font-size: 20px; }" +
+               "  .alert-box { background-color: #fef9f0; border: 2px solid #e67e22; border-radius: 6px; padding: 20px; margin: 24px 0; }" +
+               "  .alert-box p { margin: 0 0 8px; font-size: 15px; color: #555555; }" +
+               "  .alert-box .message { font-size: 16px; font-weight: bold; color: #c0392b; }" +
+               "  .product-id { font-size: 12px; color: #999999; margin-top: 10px; word-break: break-all; }" +
+               "  .action-note { background-color: #fff3cd; border-left: 4px solid #f0ad4e; padding: 12px 16px; border-radius: 4px; font-size: 14px; color: #856404; margin: 16px 0; }" +
+               "  .footer { background-color: #f9f9f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #aaaaaa; border-top: 1px solid #eeeeee; }" +
+               "</style></head>" +
+               "<body>" +
+               "  <div class=\"email-container\">" +
+               "    <div class=\"header\"><h1>⚠️ Low Stock Alert</h1></div>" +
+               "    <div class=\"body\">" +
+               "      <h2>Inventory Action Required!</h2>" +
+               "      <p>This is an automated alert from the inventory system. A product has dropped below the minimum stock threshold.</p>" +
+               "      <div class=\"alert-box\">" +
+               "        <p class=\"message\">" + alertMessage + "</p>" +
+               (productId != null ? "        <p class=\"product-id\">Product ID: " + productId + "</p>" : "") +
+               "      </div>" +
+               "      <div class=\"action-note\">📋 Please log in to the admin panel and restock this product as soon as possible to avoid order fulfilment issues.</div>" +
+               "    </div>" +
+               "    <div class=\"footer\">" +
+               "      <p>This is an automated alert from the Inventory Management System.</p>" +
+               "      <p>&copy; 2026 E-Commerce Platform. All rights reserved.</p>" +
+               "    </div>" +
+               "  </div>" +
+               "</body></html>";
+    }
 }

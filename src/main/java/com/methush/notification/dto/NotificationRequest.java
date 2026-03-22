@@ -1,7 +1,5 @@
 package com.methush.notification.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
@@ -9,28 +7,24 @@ public class NotificationRequest {
 
     /**
      * Notification type.
-     * Supported values: "order_confirmation", "order_status_update"
+     * Supported values: "order_confirmation", "order_status_update", "LOW_STOCK"
      */
-    @NotBlank(message = "type is mandatory")
     private String type;
 
-    /**
-     * Recipient email address (the user's email).
-     */
-    @NotBlank(message = "email is mandatory")
-    @Email(message = "email must be a valid email address")
+    // ── Order notification fields ──────────────────────────────────────────
+    /** Recipient email address (user's email for order notifications). */
     private String email;
 
-    /**
-     * The order ID (e.g. "ORD#0001").
-     */
-    @NotBlank(message = "orderId is mandatory")
+    /** The order ID (e.g. "ORD#0001"). */
     private String orderId;
 
-    /**
-     * New order status. Required only for "order_status_update" notifications.
-     * E.g. "Shipped", "Delivered", "Cancelled"
-     */
+    /** New order status — required for "order_status_update" notifications. */
     private String orderStatus;
 
+    // ── Low stock alert fields (sent by inventory service) ─────────────────
+    /** Human-readable alert message from the inventory service. */
+    private String message;
+
+    /** MongoDB product ID that triggered the low stock alert. */
+    private String productId;
 }
