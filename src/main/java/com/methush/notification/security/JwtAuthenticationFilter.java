@@ -1,8 +1,9 @@
 package com.methush.notification.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import javax.crypto.spec.SecretKeySpec;
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,8 +18,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.Key;
 import java.util.Collections;
 
 @Component
@@ -30,24 +29,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        
+
         try {
             String jwt = getJwtFromRequest(request);
 
-            if (StringUtils.hasText(jwt) && validateToken(jwt)) {
-                Claims claims = getClaimsFromJWT(jwt);
-                // Extracting user identity. Assume 'sub' (subject) holds the userId or email
-                String userId = claims.getSubject() != null ? claims.getSubject() : "unknown-user"; 
+            if (StringUtils.hasText(jwt)) {
+                DecodedJWT decoded = verifyToken(jwt);
+                if (decoded != null) {
+                    // Auth0 JWT stores custom claims — get 'id' claim as set by Node.js auth service
+                    String userId = decoded.getClaim("id").asString();
+                    if (userId == null) userId = decoded.getSubject();
+                    if (userId == null) userId = "unknown-user";
 
-                // Creating Context
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.emptyList());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception ex) {
-            logger.error("Could not set user authentication in security context", ex);
+            logger.error("Could not set user authentication in security context: " + ex.getMessage());
         }
 
         filterChain.doFilter(request, response);
@@ -56,30 +57,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private String getJwtFromRequest(HttpServletRequest request) {
         String bearerToken = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7); // "Bearer " is 7 chars
+            return bearerToken.substring(7);
         }
         return null;
     }
 
-    private boolean validateToken(String authToken) {
+    private DecodedJWT verifyToken(String token) {
         try {
-            logger.debug("JWT validation - secret length: " + jwtSecret.length() + ", secret: [" + jwtSecret + "]");
-            Key key = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(authToken);
-            logger.debug("JWT validation SUCCESS");
-            return true;
-        } catch (Exception ex) {
-            logger.error("JWT validation FAILED [" + ex.getClass().getSimpleName() + "]: " + ex.getMessage());
+            // Auth0 Algorithm.HMAC256 accepts any key length — no 256-bit enforcement
+            Algorithm algorithm = Algorithm.HMAC256(jwtSecret);
+            return JWT.require(algorithm).build().verify(token);
+        } catch (JWTVerificationException ex) {
+            logger.error("JWT verification failed: " + ex.getMessage());
+            return null;
         }
-        return false;
-    }
-
-    private Claims getClaimsFromJWT(String token) {
-        Key key = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
     }
 }
+
