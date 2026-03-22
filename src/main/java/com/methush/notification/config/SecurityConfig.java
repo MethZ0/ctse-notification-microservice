@@ -30,8 +30,6 @@ public class SecurityConfig {
                 .requestMatchers("/health").permitAll()
                 // Allow Swagger UI
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                // ⚠️ TEMP DEBUG: permit /notification/send to isolate JWT issue
-                .requestMatchers("/notification/send").permitAll()
                 // Any other request must be authenticated
                 .anyRequest().authenticated()
             )

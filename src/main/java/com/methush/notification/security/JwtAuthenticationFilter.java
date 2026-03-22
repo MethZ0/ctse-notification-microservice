@@ -63,11 +63,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private boolean validateToken(String authToken) {
         try {
+            logger.debug("JWT validation - secret length: " + jwtSecret.length() + ", secret: [" + jwtSecret + "]");
             Key key = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(authToken);
+            logger.debug("JWT validation SUCCESS");
             return true;
         } catch (Exception ex) {
-            logger.error("Invalid JWT token: " + ex.getMessage());
+            logger.error("JWT validation FAILED [" + ex.getClass().getSimpleName() + "]: " + ex.getMessage());
         }
         return false;
     }
