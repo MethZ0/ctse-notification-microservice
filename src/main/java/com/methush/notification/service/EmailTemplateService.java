@@ -5,6 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * Builds HTML email bodies for each notification type.
  */
@@ -17,52 +20,83 @@ public class EmailTemplateService {
     private String appName;
 
     /**
-     * HTML email for a new order confirmation.
+     * Rich HTML email for a new order confirmation with items, total and delivery address.
      *
-     * @param orderId the custom order ID (e.g. "ORD#0001")
+     * @param orderId         the human-readable order ID (e.g. "ORD#0003")
+     * @param items           list of order items (each has productId, quantity, price)
+     * @param total           order total amount
+     * @param deliveryAddress delivery address string
      * @return HTML string
      */
-    public String buildOrderConfirmationHtml(String orderId) {
+    public String buildOrderConfirmationHtml(String orderId,
+                                              List<Map<String, Object>> items,
+                                              double total,
+                                              String deliveryAddress) {
+        // Build the items rows HTML
+        StringBuilder itemRows = new StringBuilder();
+        if (items != null && !items.isEmpty()) {
+            for (Map<String, Object> item : items) {
+                String productId = item.get("productId") != null ? item.get("productId").toString() : "-";
+                Object qty = item.get("quantity");
+                Object price = item.get("price");
+                double lineTotal = (qty != null ? ((Number) qty).doubleValue() : 0)
+                                 * (price != null ? ((Number) price).doubleValue() : 0);
+                itemRows.append("<tr>")
+                        .append("<td>").append(productId, 0, Math.min(8, productId.length())).append("...").append("</td>")
+                        .append("<td style='text-align:center'>").append(qty != null ? qty : 0).append("</td>")
+                        .append("<td style='text-align:right'>LKR ").append(String.format("%.2f", price != null ? ((Number) price).doubleValue() : 0)).append("</td>")
+                        .append("<td style='text-align:right'>LKR ").append(String.format("%.2f", lineTotal)).append("</td>")
+                        .append("</tr>");
+            }
+        } else {
+            itemRows.append("<tr><td colspan='4' style='text-align:center;color:#aaa'>No item details available</td></tr>");
+        }
+
+        String addressHtml = (deliveryAddress != null && !deliveryAddress.isBlank())
+                ? "<p style='margin:8px 0;font-size:14px;color:#555'><b>Deliver to:</b> " + deliveryAddress + "</p>"
+                : "";
+
         return "<!DOCTYPE html>" +
                "<html lang=\"en\">" +
                "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
                "<style>" +
                "  body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }" +
-               "  .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }" +
-               "  .header { background-color: #2ecc71; padding: 30px 40px; text-align: center; }" +
-               "  .header h1 { color: #ffffff; margin: 0; font-size: 26px; letter-spacing: 1px; }" +
-               "  .body { padding: 40px; color: #333333; }" +
-               "  .body h2 { color: #2ecc71; font-size: 20px; }" +
-               "  .order-box { background-color: #f0faf4; border: 1px solid #2ecc71; border-radius: 6px; padding: 20px; margin: 24px 0; text-align: center; }" +
-               "  .order-box p { margin: 0; font-size: 14px; color: #555555; }" +
-               "  .order-box span { font-size: 28px; font-weight: bold; color: #27ae60; display: block; margin-top: 8px; }" +
-               "  .steps { margin: 24px 0; padding-left: 0; list-style: none; }" +
-               "  .steps li { padding: 10px 0; border-bottom: 1px solid #eeeeee; color: #555555; font-size: 14px; }" +
-               "  .steps li:last-child { border-bottom: none; }" +
-               "  .steps li::before { content: '✓ '; color: #2ecc71; font-weight: bold; }" +
-               "  .footer { background-color: #f9f9f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #aaaaaa; border-top: 1px solid #eeeeee; }" +
+               "  .email-container { max-width: 620px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }" +
+               "  .header { background-color: #2ecc71; padding: 28px 40px; text-align: center; }" +
+               "  .header h1 { color: #ffffff; margin: 0; font-size: 24px; }" +
+               "  .body { padding: 36px 40px; color: #333333; }" +
+               "  .body h2 { color: #2ecc71; font-size: 18px; margin-top: 0; }" +
+               "  .order-id-box { background:#f0faf4; border:1px solid #2ecc71; border-radius:6px; padding:16px; text-align:center; margin:20px 0; }" +
+               "  .order-id-box p { margin:0; font-size:13px; color:#555; }" +
+               "  .order-id-box span { font-size:26px; font-weight:bold; color:#27ae60; display:block; margin-top:6px; }" +
+               "  .items-table { width:100%; border-collapse:collapse; margin:20px 0; font-size:13px; }" +
+               "  .items-table th { background:#f8f8f8; padding:8px 10px; text-align:left; border-bottom:2px solid #eee; color:#666; }" +
+               "  .items-table td { padding:8px 10px; border-bottom:1px solid #f0f0f0; color:#444; }" +
+               "  .total-row { font-weight:bold; font-size:15px; }" +
+               "  .total-row td { border-top:2px solid #2ecc71 !important; padding-top:12px !important; color:#27ae60; }" +
+               "  .footer { background-color:#f9f9f9; padding:18px 40px; text-align:center; font-size:11px; color:#aaa; border-top:1px solid #eee; }" +
                "</style></head>" +
                "<body>" +
                "  <div class=\"email-container\">" +
                "    <div class=\"header\"><h1>✅ Order Confirmed!</h1></div>" +
                "    <div class=\"body\">" +
                "      <h2>Thank you for your order!</h2>" +
-               "      <p>We've received your order and it's now being processed. Here are your order details:</p>" +
-               "      <div class=\"order-box\">" +
-               "        <p>Your Order ID</p>" +
-               "        <span>" + orderId + "</span>" +
-               "      </div>" +
-               "      <p>Here's what happens next:</p>" +
-               "      <ul class=\"steps\">" +
-               "        <li>Your order is being reviewed and confirmed</li>" +
-               "        <li>Items will be picked and packed from our warehouse</li>" +
-               "        <li>Your package will be shipped to your delivery address</li>" +
-               "        <li>You will receive a status update email at each step</li>" +
-               "      </ul>" +
-               "      <p>If you have any questions, please contact our support team.</p>" +
+               "      <p>Your order has been received and is now being processed.</p>" +
+               "      <div class=\"order-id-box\"><p>Order ID</p><span>" + orderId + "</span></div>" +
+               addressHtml +
+               "      <table class=\"items-table\">" +
+               "        <thead><tr>" +
+               "          <th>Product</th><th style='text-align:center'>Qty</th><th style='text-align:right'>Unit Price</th><th style='text-align:right'>Subtotal</th>" +
+               "        </tr></thead>" +
+               "        <tbody>" + itemRows + "</tbody>" +
+               "        <tfoot><tr class=\"total-row\">" +
+               "          <td colspan='3'>Total</td><td style='text-align:right'>LKR " + String.format("%.2f", total) + "</td>" +
+               "        </tr></tfoot>" +
+               "      </table>" +
+               "      <p style='font-size:13px;color:#666'>If you have any questions, please contact our support team.</p>" +
                "    </div>" +
                "    <div class=\"footer\">" +
-               "      <p>This is an automated email. Please do not reply directly to this email.</p>" +
+               "      <p>This is an automated email. Please do not reply.</p>" +
                "      <p>&copy; 2026 E-Commerce Platform. All rights reserved.</p>" +
                "    </div>" +
                "  </div>" +
@@ -70,15 +104,16 @@ public class EmailTemplateService {
     }
 
     /**
-     * HTML email for an order status update.
+     * HTML email for an order status update — now includes order total.
      *
-     * @param orderId     the custom order ID (e.g. "ORD#0001")
-     * @param orderStatus the new order status (e.g. "Shipped", "Delivered")
+     * @param orderId     the human-readable order ID (e.g. "ORD#0003")
+     * @param orderStatus the new order status
+     * @param total       the order total
      * @return HTML string
      */
-    public String buildOrderStatusUpdateHtml(String orderId, String orderStatus) {
+    public String buildOrderStatusUpdateHtml(String orderId, String orderStatus, double total) {
         String statusColor = resolveStatusColor(orderStatus);
-        String statusIcon = resolveStatusIcon(orderStatus);
+        String statusIcon  = resolveStatusIcon(orderStatus);
 
         return "<!DOCTYPE html>" +
                "<html lang=\"en\">" +
@@ -108,6 +143,7 @@ public class EmailTemplateService {
                "        <table>" +
                "          <tr><td>Order ID</td><td>" + orderId + "</td></tr>" +
                "          <tr><td>New Status</td><td><span class=\"status-badge\">" + orderStatus + "</span></td></tr>" +
+               "          <tr><td>Order Total</td><td>LKR " + String.format("%.2f", total) + "</td></tr>" +
                "        </table>" +
                "      </div>" +
                "      <p>We'll continue to keep you updated as your order progresses. Thank you for shopping with us!</p>" +

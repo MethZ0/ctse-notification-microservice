@@ -44,18 +44,14 @@ public class NotificationService {
     private String gatewayUrl;
 
     /**
-     * Entry point: processes a notification by type.
-     * Supported types:
-     *   - "order_confirmation"   → sends an order placed email to the customer
-     *   - "order_status_update"  → sends a status changed email to the customer
-     *   - "LOW_STOCK"            → sends a low stock warning email to ALL admin users
-     *
-     * @param request    the notification payload
-     * @param authHeader the Authorization header from the inbound request (forwarded to gateway)
+     * Entry point — routes the notification by type:
+     *   - "order_confirmation"   → fetches order details, sends rich confirmation email
+     *   - "order_status_update"  → fetches order details, sends status update email
+     *   - "LOW_STOCK"            → fetches all admin emails, sends low stock alert
      */
     public NotificationResponse processNotification(NotificationRequest request, String authHeader) {
-        log.info("[NOTIFICATION] type={} orderId={} email={} productId={}",
-                request.getType(), request.getOrderId(), request.getEmail(), request.getProductId());
+        log.info("[NOTIFICATION] type={} orderId={} email={}",
+                request.getType(), request.getOrderId(), request.getEmail());
 
         boolean emailSent = false;
         String normalizedType = request.getType() != null ? request.getType().toLowerCase() : "";
@@ -63,25 +59,55 @@ public class NotificationService {
         switch (normalizedType) {
 
             case "order_confirmation" -> {
-                String subject = "✅ Order Confirmed — " + request.getOrderId();
-                String htmlBody = emailTemplateService.buildOrderConfirmationHtml(request.getOrderId());
+                // Fetch full order details using the MongoDB _id passed as orderId
+                Map<String, Object> order = fetchOrderDetails(request.getOrderId(), authHeader);
+
+                // Use human-readable orderId (e.g. ORD#0003) from the order object if available
+                String displayId = order != null && order.get("orderId") != null
+                        ? (String) order.get("orderId")
+                        : request.getOrderId();
+
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> items = order != null
+                        ? (List<Map<String, Object>>) order.get("items")
+                        : Collections.emptyList();
+
+                double total = order != null && order.get("total") != null
+                        ? ((Number) order.get("total")).doubleValue() : 0.0;
+
+                String deliveryAddress = order != null
+                        ? (String) order.get("deliveryAddress") : null;
+
+                String subject = "✅ Order Confirmed — " + displayId;
+                String htmlBody = emailTemplateService.buildOrderConfirmationHtml(
+                        displayId, items, total, deliveryAddress);
                 emailSent = sendHtmlEmail(request.getEmail(), subject, htmlBody);
 
                 notificationRepository.save(Notification.builder()
                         .type(request.getType()).email(request.getEmail())
-                        .orderId(request.getOrderId()).timestamp(LocalDateTime.now())
+                        .orderId(displayId).timestamp(LocalDateTime.now())
                         .isEmailSent(emailSent).build());
             }
 
             case "order_status_update" -> {
+                // Fetch full order details to get the human-readable orderId
+                Map<String, Object> order = fetchOrderDetails(request.getOrderId(), authHeader);
+
+                String displayId = order != null && order.get("orderId") != null
+                        ? (String) order.get("orderId")
+                        : request.getOrderId();
+
+                double total = order != null && order.get("total") != null
+                        ? ((Number) order.get("total")).doubleValue() : 0.0;
+
                 String status = request.getOrderStatus() != null ? request.getOrderStatus() : "Updated";
-                String subject = "📦 Order " + request.getOrderId() + " Status Updated to: " + status;
-                String htmlBody = emailTemplateService.buildOrderStatusUpdateHtml(request.getOrderId(), status);
+                String subject = "📦 Order " + displayId + " Status Updated to: " + status;
+                String htmlBody = emailTemplateService.buildOrderStatusUpdateHtml(displayId, status, total);
                 emailSent = sendHtmlEmail(request.getEmail(), subject, htmlBody);
 
                 notificationRepository.save(Notification.builder()
                         .type(request.getType()).email(request.getEmail())
-                        .orderId(request.getOrderId()).orderStatus(status)
+                        .orderId(displayId).orderStatus(status)
                         .timestamp(LocalDateTime.now()).isEmailSent(emailSent).build());
             }
 
@@ -112,23 +138,24 @@ public class NotificationService {
 
         return NotificationResponse.builder()
                 .success(true)
-                .message(emailSent
-                        ? "Notification sent via email"
-                        : "Notification logged (email disabled or no admins found)")
+                .message(emailSent ? "Notification sent via email" : "Notification logged (email disabled or no recipients)")
                 .orderId(request.getOrderId() != null ? request.getOrderId() : request.getProductId())
                 .timestamp(LocalDateTime.now())
                 .build();
     }
 
     /**
-     * Fetches all admin emails by calling GET {gatewayUrl}/auth/adminUsers.
-     * Forwards the original Authorization header so the auth service accepts the call.
+     * Fetches order details from the order service via the API Gateway.
+     * Uses the MongoDB _id received in the notification payload.
+     *
+     * @return Map containing order fields (orderId, items, total, status, etc.), or null on failure
      */
     @SuppressWarnings("unchecked")
-    private List<String> fetchAdminEmails(String authHeader) {
+    private Map<String, Object> fetchOrderDetails(String mongoId, String authHeader) {
+        if (mongoId == null || mongoId.isBlank()) return null;
         try {
-            String adminUrl = gatewayUrl + "/auth/adminUsers";
-            log.info("[LOW_STOCK] Fetching admins from: {}", adminUrl);
+            String url = gatewayUrl + "/orders/" + mongoId;
+            log.info("[ORDER_FETCH] Fetching order details from: {}", url);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -137,8 +164,35 @@ public class NotificationService {
             }
 
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    adminUrl,
-                    HttpMethod.GET,
+                    url, HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    new ParameterizedTypeReference<>() {}
+            );
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody().get("order");
+            }
+        } catch (Exception e) {
+            log.error("[ORDER_FETCH] Failed to fetch order {}: {}", mongoId, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Fetches all admin emails by calling GET {gatewayUrl}/auth/adminUsers.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> fetchAdminEmails(String authHeader) {
+        try {
+            String adminUrl = gatewayUrl + "/auth/adminUsers";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (authHeader != null && !authHeader.isBlank()) {
+                headers.set("Authorization", authHeader);
+            }
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    adminUrl, HttpMethod.GET,
                     new HttpEntity<>(headers),
                     new ParameterizedTypeReference<>() {}
             );
@@ -159,18 +213,11 @@ public class NotificationService {
         return Collections.emptyList();
     }
 
-    /**
-     * Fetch recent notifications ordered by timestamp descending.
-     */
     public Page<Notification> getRecentNotifications(int page, int size) {
         return notificationRepository.findAll(
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp")));
     }
 
-    /**
-     * Sends an HTML email using JavaMailSender.
-     * @return true if sent successfully, false otherwise
-     */
     private boolean sendHtmlEmail(String to, String subject, String htmlBody) {
         if (!emailEnabled) {
             log.info("[EMAIL DISABLED] Would have sent '{}' to {}", subject, to);
